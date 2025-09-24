@@ -20,9 +20,13 @@ const uploadsDir = path.join(__dirname, '../uploads')
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
 
 // Postgres setup (Neon or any Postgres)
+const connectionString = process.env.DATABASE_URL
+const isLocalDb = connectionString && /(localhost|127\.0\.0\.1)/i.test(connectionString)
+// Disable SSL if explicitly requested, if connecting to localhost, or if no connection string (pg will use local defaults)
+const disableSsl = !!process.env.DATABASE_SSL_DISABLED || isLocalDb || !connectionString
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_SSL_DISABLED ? false : { rejectUnauthorized: false },
+  connectionString,
+  ssl: disableSsl ? false : { rejectUnauthorized: false },
 })
 
 async function ensureSchema() {
