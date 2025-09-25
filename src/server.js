@@ -27,7 +27,7 @@ const disableSsl = !!process.env.DATABASE_SSL_DISABLED || isLocalDb || !connecti
 let pool = null
 let useFileDb = false
 const fileDbPath = path.join(__dirname, '../data.sqlite') // reuse existing file name
-const fileDb = { contact_messages: [], training_submits: [], site_content: {} }
+const fileDb = { contact_messages: [], training_submits: [], product_orders: [], site_content: {} }
 
 function loadFileDb() {
   try {
@@ -73,6 +73,11 @@ async function ensureSchema() {
   await pool.query(`CREATE TABLE IF NOT EXISTS site_content (
     key TEXT PRIMARY KEY,
     value TEXT
+  )`)
+  await pool.query(`CREATE TABLE IF NOT EXISTS product_orders (
+    id SERIAL PRIMARY KEY,
+    created_at TEXT,
+    payload TEXT
   )`)
 }
 ensureSchema().catch((e)=>{
@@ -138,6 +143,37 @@ app.post('/api/trainings/submit', (req, res) => {
   }
   pool.query('INSERT INTO training_submits (created_at, payload) VALUES ($1,$2) RETURNING id', [created_at, JSON.stringify(values)])
     .then(({ rows }) => res.json({ id: rows[0].id, created_at }))
+    .catch(() => res.status(500).json({ error: 'DB error' }))
+})
+
+// Product orders: submit
+app.post('/api/products/orders', (req, res) => {
+  const { values } = req.body || {}
+  if (!values || typeof values !== 'object') return res.status(400).json({ error: 'Invalid payload' })
+  const created_at = new Date().toISOString()
+  if (useFileDb || !pool) {
+    const id = (fileDb.product_orders.at(-1)?.id || 0) + 1
+    fileDb.product_orders.push({ id, created_at, payload: JSON.stringify(values) })
+    saveFileDb()
+    return res.json({ id, created_at })
+  }
+  pool.query('INSERT INTO product_orders (created_at, payload) VALUES ($1,$2) RETURNING id', [created_at, JSON.stringify(values)])
+    .then(({ rows }) => res.json({ id: rows[0].id, created_at }))
+    .catch(() => res.status(500).json({ error: 'DB error' }))
+})
+
+// Product orders: list
+app.get('/api/products/orders', (req, res) => {
+  if (useFileDb || !pool) {
+    const rows = [...fileDb.product_orders].sort((a, b) => b.id - a.id)
+    const out = rows.map(r => ({ id: r.id, createdAt: r.created_at, values: JSON.parse(r.payload || '{}') }))
+    return res.json(out)
+  }
+  pool.query('SELECT id, created_at, payload FROM product_orders ORDER BY id DESC')
+    .then(({ rows }) => {
+      const out = rows.map(r => ({ id: r.id, createdAt: r.created_at, values: JSON.parse(r.payload || '{}') }))
+      res.json(out)
+    })
     .catch(() => res.status(500).json({ error: 'DB error' }))
 })
 
