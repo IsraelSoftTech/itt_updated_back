@@ -12,6 +12,14 @@ const __dirname = path.dirname(__filename)
 
 const app = express()
 app.use(cors())
+
+// Global no-cache for API responses to ensure clients always see latest content
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  res.setHeader('Pragma', 'no-cache')
+  res.setHeader('Expires', '0')
+  next()
+})
 app.use(express.json({ limit: '10mb' }))
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
 
